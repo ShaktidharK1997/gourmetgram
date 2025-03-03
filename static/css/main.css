@@ -20,6 +20,21 @@ input[type="file"] {
     display: none;
 }
 
+.upload-label{
+    display: inline-block;
+    padding: 12px 30px;
+    background: #39D2B4;
+    color: #fff;
+    font-size: 1em;
+    transition: all .4s;
+    cursor: pointer;
+}
+
+.upload-label:hover{
+    background: #34495E;
+    color: #39D2B4;
+}
+
 .loader {
     border: 8px solid #f3f3f3; /* Light grey */
     border-top: 8px solid #3498db; /* Blue */
@@ -27,9 +42,30 @@ input[type="file"] {
     width: 50px;
     height: 50px;
     animation: spin 1s linear infinite;
+    margin: 1em auto;
 }
 
 @keyframes spin {
     0% { transform: rotate(0deg); }
     100% { transform: rotate(360deg); }
+}
+
+.prediction-result {
+    margin-top: 20px;
+    padding: 15px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    background-color: #f9f9f9;
+}
+
+.feedback-buttons {
+    margin-top: 10px;
+}
+
+.feedback-buttons button {
+    margin-right: 10px;
+}
+
+#feedback-message {
+    margin-top: 15px;
 }

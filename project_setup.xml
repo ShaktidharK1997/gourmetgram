@@ -1,0 +1,31 @@
+<View>
+  <Image name="image" value="$image"/>
+  <Header value="ML Prediction Review"/>
+  
+  <!-- Original ML Prediction (read-only display) -->
+  <View className="prediction-info">
+    <Header value="Original ML Prediction"/>
+    <Text name="ml_prediction" value="$ml_prediction"/>
+    <Text name="confidence" value="$confidence"/>
+    <Text name="user_agrees" value="Where user agrees with it? $user_feedback"/>
+  </View>
+  
+  <!-- Human Verification/Correction -->
+  <Header value="Verify or Correct Classification"/>
+  <Choices name="food_type" toName="image" choice="single" showInLine="true">
+    <Choice value="Bread"/>
+    <Choice value="Dairy product"/>
+    <Choice value="Dessert"/>
+    <Choice value="Egg"/>
+    <Choice value="Fried food"/>
+    <Choice value="Meat"/>
+    <Choice value="Noodles/Pasta"/>
+    <Choice value="Rice"/>
+    <Choice value="Seafood"/>
+    <Choice value="Soup"/>
+    <Choice value="Vegetable/Fruit"/>
+  </Choices>
+  
+  <!-- Optional: Add feedback field -->
+  <TextArea name="notes" toName="image" placeholder="Optional: Add any notes about this classification" maxSubmissions="1"/>
+</View>

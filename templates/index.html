@@ -1,12 +1,10 @@
 {% extends "base.html" %} {% block content %}
 
 <div>
-    <form id="upload-file" method = "POST" enctype="multipart/form-data">
+    <form id="upload-file" method="POST" enctype="multipart/form-data">
         <label for="imageUpload" class="btn btn-primary">Upload image</label>
         <input type="file" name="file" id="imageUpload" accept=".png, .jpg, .jpeg">
     </form>
-
-
 
     <div class="image-section" style="display:none;">
         <div class="img-preview">
@@ -20,9 +18,11 @@
 
     <div class="loader" style="display:none;"></div>
 
-    <span id="result">
-    </span>
+    <div id="result">
+    </div>
 
+    <div id="feedback-message" class="mt-3" style="display:none;">
+    </div>
 </div>
 
 {% endblock %}
