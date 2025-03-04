@@ -4,6 +4,9 @@ services:
     ports:
       - "8080:8080"
     environment:
+      - LABEL_STUDIO_USERNAME=gourmetgramuser@gmail.com
+      - LABEL_STUDIO_PASSWORD=gourmetgrampassword
+      - LABEL_STUDIO_USER_TOKEN=ab9927067c51ff279d340d7321e4890dc2841c4a
       - LABEL_STUDIO_LOCAL_FILES_SERVING_ENABLED=true
       - LABEL_STUDIO_LOCAL_FILES_DOCUMENT_ROOT=/label-studio/data
       - POSTGRES_HOST=app-db
@@ -52,4 +55,15 @@ services:
       - app-db
       - minio
       - label-studio
-    
+      
+  label-processor:
+    build:
+      context: ./label_processor
+      dockerfile: Dockerfile
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin
+      - MINIO_HOST=minio
+    depends_on:
+      - minio
+      - label-studio
