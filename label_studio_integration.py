@@ -2,7 +2,7 @@ import time
 import requests
 import logging
 from label_studio_sdk.client import LabelStudio
-import subprocess
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -10,10 +10,8 @@ class LabelStudioClient:
     """Handles all interactions with the Label Studio API"""
     
     def __init__(self):
-        self.LABEL_STUDIO_URL = "http://label-studio:8080"
-        self.USERNAME = "gourmetgramuser"
-        self.PASSWORD = "gourmetgrampassword"
-        self.API_TOKEN = "ab9927067c51ff279d340d7321e4890dc2841c4a"
+        self.LABEL_STUDIO_URL = os.getenv('LABEL_STUDIO_URL')
+        self.API_TOKEN = os.getenv('LABEL_STUDIO_TOKEN')
         self.ls = None
         self.project = None
 

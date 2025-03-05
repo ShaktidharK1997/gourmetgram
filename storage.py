@@ -132,7 +132,8 @@ class StorageManager:
         tracking_files = [
             'user_feedback_tasks.json',
             'low_confidence_tasks.json',
-            'random_sampling_tasks.json'
+            'random_sampling_tasks.json',
+            'production_data.json'
         ]
         
         for filename in tracking_files:

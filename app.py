@@ -4,10 +4,9 @@ import torchvision.transforms as transforms
 import torch
 from flask import Flask, redirect, url_for, request, render_template, jsonify
 from werkzeug.utils import secure_filename
-import os
-import logging
 import datetime
 import uuid
+import json
 from io import BytesIO
 
 # Import our custom modules
@@ -19,7 +18,6 @@ from utils import setup_logging, generate_unique_filename
 logger = setup_logging()
 
 app = Flask(__name__)
-os.makedirs(os.path.join(app.instance_path, 'uploads'), exist_ok=True)
 
 # Initialize storage manager
 storage_manager = StorageManager()
@@ -30,13 +28,16 @@ label_studio_client = LabelStudioClient()
 # Store temporary image data
 temp_predictions = {}
 
-# Load model - with error handling
+# Load model and model info
 try:
     model = torch.load("/app/food11.pth", map_location=torch.device('cpu'))
-    logger.info("Model loaded successfully")
+    with open("/app/food11_info.json", "r") as f:
+        model_info = json.load(f)
+    logger.info("Model and model info loaded successfully")
 except Exception as e:
-    logger.error(f"Error loading model: {e}")
+    logger.error(f"Error loading model or model info: {e}")
     model = None
+    model_info = None
 
 def preprocess_image(img):
     transform = transforms.Compose([
@@ -48,16 +49,10 @@ def preprocess_image(img):
     return transform(img).unsqueeze(0)
 
 def model_predict(img_data, model):
-    # Check if img_data is a path or binary data
-    if isinstance(img_data, str):
-        # It's a file path
-        img = Image.open(img_data).convert('RGB')
-    else:
-        # It's binary data
-        img = Image.open(BytesIO(img_data)).convert('RGB')
-        
+    # Handle image data directly instead of a path
+    img = Image.open(BytesIO(img_data)).convert('RGB')
     img = preprocess_image(img)
-
+    
     classes = np.array(["Bread", "Dairy product", "Dessert", "Egg", "Fried food",
         "Meat", "Noodles/Pasta", "Rice", "Seafood", "Soup",
         "Vegetable/Fruit"])
@@ -85,18 +80,13 @@ def upload():
             original_filename = secure_filename(f.filename)
             unique_filename = generate_unique_filename(original_filename)
             
-            # Read file data into memory
+            # Read file data directly
             file_data = f.read()
             
-            # Save file locally (like the original version)
-            local_path = os.path.join(app.instance_path, 'uploads', unique_filename)
-            with open(local_path, 'wb') as local_file:
-                local_file.write(file_data)
-            
-            # Make prediction using the file data
+            # Make prediction using the file data directly
             predicted_class, confidence, predicted_class_idx = model_predict(file_data, model)
             
-            # Upload to storage
+            # Upload the file to storage
             s3_path = storage_manager.upload_image(
                 file_data, 
                 unique_filename, 
@@ -116,6 +106,23 @@ def upload():
                 'confidence': confidence,
                 'filename': s3_path
             }
+            
+            # Store production data in tracking file
+            production_data = {
+                "prediction_id": prediction_id,
+                "image_path": s3_path,
+                "image_url": public_url,
+                "prediction": predicted_class,
+                "prediction_idx": int(predicted_class_idx),
+                "confidence": float(confidence),
+                "timestamp": datetime.datetime.now().isoformat(),
+                "model_version": model_info["model_info"]["version"] if model_info else "unknown",
+                "status": "served"
+            }
+            
+            # Append data to production_data.json
+            storage_manager.append_to_tracking_file("production_data.json", production_data)
+            logger.info(f"Stored production data for prediction {prediction_id}")
             
             # Return prediction to user with feedback buttons
             result_html = f'''
@@ -163,7 +170,7 @@ def submit_feedback():
             should_create_task = True
             tracking_file = 'user_feedback_tasks.json'
             logger.info("Creating task because user disagreed with classification")
-        elif confidence < 0.7:  # Low confidence prediction
+        elif confidence < model_info['thresholds']['confidence_threshold']:  # Low confidence prediction
             should_create_task = True
             tracking_file = 'low_confidence_tasks.json'
             logger.info(f"Creating task because of low confidence ({confidence:.2f})")
@@ -187,7 +194,7 @@ def submit_feedback():
                         "original_prediction": predicted_class,
                         "confidence": confidence,
                         "timestamp": datetime.datetime.now().isoformat(),
-                        "model_version": "v1.0",  
+                        "model_version": model_info["model_info"]["version"],  
                         "task_id": task.id,
                         "status": "pending",
                         "user_feedback": feedback
@@ -215,8 +222,10 @@ def submit_feedback():
 @app.route('/test', methods=['GET'])
 def test():
     try:
-        test_image_path = "./instance/uploads/test_image.jpeg"
-        preds, probs, _ = model_predict(test_image_path, model)
+        # Read a test image from a fixed location
+        with open("/app/test_image.jpeg", "rb") as f:
+            test_image_data = f.read()
+        preds, probs, _ = model_predict(test_image_data, model)
         return str(preds)
     except Exception as e:
         logger.error(f"Error in test route: {e}")

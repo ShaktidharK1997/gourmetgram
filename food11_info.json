@@ -1,0 +1,76 @@
+{
+    "model_info": {
+      "name": "Food11",
+      "version": "1.0.0",
+      "creation_date": "2025-01-15",
+      "author": "GourmetGram Team",
+      "architecture": "ResNet50",
+      "accuracy": 0.87,
+      "training_dataset": "Food11 Dataset"
+    },
+    "classes": [
+      {
+        "id": 0,
+        "name": "Bread",
+        "description": "Includes various types of bread, rolls, toast, and baked goods"
+      },
+      {
+        "id": 1,
+        "name": "Dairy product",
+        "description": "Includes milk, cheese, yogurt, and other dairy-based foods"
+      },
+      {
+        "id": 2,
+        "name": "Dessert",
+        "description": "Sweet foods typically served as the final course of a meal"
+      },
+      {
+        "id": 3,
+        "name": "Egg",
+        "description": "Egg-based dishes including fried eggs, boiled eggs, and omelettes"
+      },
+      {
+        "id": 4,
+        "name": "Fried food",
+        "description": "Foods that have been cooked by frying"
+      },
+      {
+        "id": 5,
+        "name": "Meat",
+        "description": "Foods made from animal flesh, including beef, pork, chicken, and lamb"
+      },
+      {
+        "id": 6,
+        "name": "Noodles/Pasta",
+        "description": "Various types of noodles and pasta dishes"
+      },
+      {
+        "id": 7,
+        "name": "Rice",
+        "description": "Rice dishes including plain rice, fried rice, and rice bowls"
+      },
+      {
+        "id": 8,
+        "name": "Seafood",
+        "description": "Edible aquatic animals, including fish, shellfish, and other marine life"
+      },
+      {
+        "id": 9,
+        "name": "Soup",
+        "description": "Liquid food made by cooking ingredients in stock or water"
+      },
+      {
+        "id": 10,
+        "name": "Vegetable/Fruit",
+        "description": "Plant-based foods including vegetables, fruits, and salads"
+      }
+    ],
+    "diet_info": {
+      "vegetarian_classes": [0, 1, 2, 3, 6, 7, 9, 10],
+      "vegan_classes": [0, 6, 7, 9, 10],
+      "gluten_free_classes": [1, 2, 3, 4, 5, 7, 8, 9, 10]
+    },
+    "thresholds": {
+      "confidence_threshold": 0.7
+    }
+  }

@@ -3,19 +3,8 @@ services:
     image: heartexlabs/label-studio:latest
     ports:
       - "8080:8080"
-    environment:
-      - LABEL_STUDIO_USERNAME=gourmetgramuser@gmail.com
-      - LABEL_STUDIO_PASSWORD=gourmetgrampassword
-      - LABEL_STUDIO_USER_TOKEN=ab9927067c51ff279d340d7321e4890dc2841c4a
-      - LABEL_STUDIO_LOCAL_FILES_SERVING_ENABLED=true
-      - LABEL_STUDIO_LOCAL_FILES_DOCUMENT_ROOT=/label-studio/data
-      - POSTGRES_HOST=app-db
-      - POSTGRES_PORT=5432
-      - POSTGRES_USER=appuser
-      - POSTGRES_PASSWORD=apppass
-      - POSTGRES_DB=appdb
+    env_file: "env/label-studio.env"
     depends_on:
-      - app-db
       - minio
 
   minio:
@@ -23,19 +12,8 @@ services:
     ports:
       - "9000:9000"
       - "9001:9001"
-    environment:
-      - MINIO_ROOT_USER=minioadmin
-      - MINIO_ROOT_PASSWORD=minioadmin
+    env_file: "env/label-studio.env"
     command: server /data --console-address ":9001"
-
-  app-db:
-    image: postgres:12.3
-    environment:
-      - POSTGRES_USER=appuser
-      - POSTGRES_PASSWORD=apppass
-      - POSTGRES_DB=appdb
-    ports:
-      - "5432:5432"
 
   flask-app:
     build:
@@ -43,27 +21,17 @@ services:
       dockerfile: Dockerfile
     ports:
       - "8000:8000"
-    environment:
-      - POSTGRES_HOST=app-db
-      - POSTGRES_USER=appuser
-      - POSTGRES_PASSWORD=apppass
-      - POSTGRES_DB=appdb
-      - MINIO_ROOT_USER=minioadmin
-      - MINIO_ROOT_PASSWORD=minioadmin
-      - MINIO_HOST=minio
+    env_file: "env/flask-app.env"
     depends_on:
-      - app-db
       - minio
       - label-studio
       
-  label-processor:
+  scheduler:
     build:
-      context: ./label_processor
+      context: ./scheduler
       dockerfile: Dockerfile
-    environment:
-      - MINIO_ROOT_USER=minioadmin
-      - MINIO_ROOT_PASSWORD=minioadmin
-      - MINIO_HOST=minio
+    env_file: "env/scheduler.env"
     depends_on:
       - minio
       - label-studio
+      - flask-app
