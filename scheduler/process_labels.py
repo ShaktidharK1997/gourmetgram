@@ -242,8 +242,8 @@ def main() -> None:
     """Main entry point for the label processor"""
     # You could load config from environment variables here
     minio_endpoint = os.environ.get('MINIO_ENDPOINT', 'http://minio:9000')
-    minio_key = os.environ.get('MINIO_KEY')
-    minio_secret = os.environ.get('MINIO_SECRET')
+    minio_key = os.environ.get('MINIO_KEY','minioadmin')
+    minio_secret = os.environ.get('MINIO_SECRET','minioadmin')
     
     processor = LabelProcessor(minio_endpoint, minio_key, minio_secret)
     processed_count = processor.process_label_studio_results()

@@ -12,7 +12,7 @@ services:
     ports:
       - "9000:9000"
       - "9001:9001"
-    env_file: "env/label-studio.env"
+    env_file: "env/minio.env"  
     command: server /data --console-address ":9001"
 
   flask-app:
