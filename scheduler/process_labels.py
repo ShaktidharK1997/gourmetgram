@@ -6,6 +6,10 @@ from typing import Dict, List, Optional, Any, Tuple
 import numpy as np
 from datetime import datetime
 from pathlib import Path
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -34,9 +38,7 @@ class LabelProcessor:
         'random_sampling_tasks.json'
     ]
     
-    def __init__(self, endpoint_url: str = "http://minio:9000", 
-                 access_key: str = "minioadmin", 
-                 secret_key: str = "minioadmin"):
+    def __init__(self, endpoint_url: str,access_key: str,secret_key: str):
         """Initialize the processor with S3 connection details"""
         self.fs = s3fs.S3FileSystem(
             key=access_key,
@@ -242,8 +244,8 @@ def main() -> None:
     """Main entry point for the label processor"""
     # You could load config from environment variables here
     minio_endpoint = os.environ.get('MINIO_ENDPOINT', 'http://minio:9000')
-    minio_key = os.environ.get('MINIO_KEY','minioadmin')
-    minio_secret = os.environ.get('MINIO_SECRET','minioadmin')
+    minio_key = os.environ.get('MINIO_ROOT_USER','minioadmin')
+    minio_secret = os.environ.get('MINIO_ROOT_PASSWORD','minioadmin')
     
     processor = LabelProcessor(minio_endpoint, minio_key, minio_secret)
     processed_count = processor.process_label_studio_results()

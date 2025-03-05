@@ -3,6 +3,10 @@ import requests
 import logging
 from label_studio_sdk.client import LabelStudio
 import os
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 
@@ -10,8 +14,8 @@ class LabelStudioClient:
     """Handles all interactions with the Label Studio API"""
     
     def __init__(self):
-        self.LABEL_STUDIO_URL = os.getenv('LABEL_STUDIO_URL', 'http://label-studio:8080')
-        self.API_TOKEN = os.getenv('LABEL_STUDIO_TOKEN', 'ab9927067c51ff279d340d7321e4890dc2841c4a')
+        self.LABEL_STUDIO_URL = os.getenv('LABEL_STUDIO_URL')
+        self.API_TOKEN = os.getenv('LABEL_STUDIO_USER_TOKEN')
         self.ls = None
         self.project = None
 
@@ -102,6 +106,11 @@ class LabelStudioClient:
             return False
             
         try:
+            # Get environment variables for MinIO
+            minio_user = os.getenv('MINIO_ROOT_USER')
+            minio_password = os.getenv('MINIO_ROOT_PASSWORD')
+            minio_endpoint = os.getenv('MINIO_ENDPOINT')
+            
             # Storage configuration for exporting annotations
             storage_config = {
                 "can_delete_objects": True,
@@ -109,10 +118,10 @@ class LabelStudioClient:
                 "description": "S3 storage for exporting annotations",
                 "project": self.project.id,
                 "bucket": "target-bucket",  
-                "aws_access_key_id": "minioadmin",
-                "aws_secret_access_key": "minioadmin",
+                "aws_access_key_id": minio_user,
+                "aws_secret_access_key": minio_password,
                 "region_name": "us-east-1",
-                "s3_endpoint": "http://minio:9000"
+                "s3_endpoint": minio_endpoint
             }
             
             # Make the API call to connect storage

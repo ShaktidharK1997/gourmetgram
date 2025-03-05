@@ -8,3 +8,4 @@ s3fs
 label_studio_sdk
 requests 
 boto3
+dotenv 

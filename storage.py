@@ -4,6 +4,10 @@ import logging
 import os
 import boto3
 import requests
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 
@@ -16,12 +20,17 @@ class StorageManager:
     def initialize_storage(self):
         """Initialize storage connections and buckets"""
         try:
+            # Get environment variables
+            minio_user = os.getenv('MINIO_ROOT_USER')
+            minio_password = os.getenv('MINIO_ROOT_PASSWORD')
+            minio_endpoint = os.getenv('MINIO_ENDPOINT')
+            
             # Initialize S3 filesystem
             self.fs = s3fs.S3FileSystem(
-                key='minioadmin',
-                secret='minioadmin',
+                key=minio_user,
+                secret=minio_password,
                 client_kwargs={
-                    'endpoint_url': 'http://minio:9000' 
+                    'endpoint_url': minio_endpoint
                 }
             )
             
@@ -68,12 +77,17 @@ class StorageManager:
     def _set_bucket_public_access(self, bucket_name):
         """Set a bucket to have public read access"""
         try:
+            # Get environment variables
+            minio_user = os.getenv('MINIO_ROOT_USER')
+            minio_password = os.getenv('MINIO_ROOT_PASSWORD')
+            minio_endpoint = os.getenv('MINIO_ENDPOINT')
+            
             # Create a boto3 client to interact with MinIO API
             s3_client = boto3.client(
                 's3',
-                endpoint_url='http://minio:9000',
-                aws_access_key_id='minioadmin',
-                aws_secret_access_key='minioadmin',
+                endpoint_url=minio_endpoint,
+                aws_access_key_id=minio_user,
+                aws_secret_access_key=minio_password,
                 region_name='us-east-1')
           
             # Set the bucket policy to allow public read access
@@ -99,31 +113,6 @@ class StorageManager:
             return True
         except Exception as e:
             logger.error(f"Error setting bucket {bucket_name} to public: {e}")
-            
-            # Alternative using the MinIO admin API
-            try:
-                # Try using MinIO's built-in API endpoint
-                admin_url = "http://minio:9000/minio/admin/v3/set-bucket-policy"
-                headers = {"Content-Type": "application/json"}
-                data = {
-                    "bucket": bucket_name,
-                    "policy": "download"  # Allows public read access
-                }
-                
-                response = requests.put(
-                    admin_url, 
-                    headers=headers, 
-                    json=data,
-                    auth=("minioadmin", "minioadmin")
-                )
-                
-                if response.status_code == 200:
-                    logger.info(f"Successfully set {bucket_name} bucket to public read access via MinIO API")
-                    return True
-                else:
-                    logger.error(f"MinIO API error: {response.text}")
-            except Exception as inner_e:
-                logger.error(f"Error with MinIO API approach: {inner_e}")
             
             return False
             
@@ -173,8 +162,14 @@ class StorageManager:
         if self.fs is None or s3_path.startswith("failed_upload/") or s3_path.startswith("local_storage/"):
             return f"/static/fallback_images/{os.path.basename(s3_path)}"
         
-        # Public URL to access image 
-        return f'http://localhost:9000/{s3_path}'
+        # Get endpoint from environment
+        minio_endpoint = os.getenv('MINIO_ENDPOINT')
+        
+        # Convert to localhost if needed for external access
+        public_endpoint = minio_endpoint.replace('http://minio:9000', 'http://localhost:9000')
+        
+        # Public URL to access image
+        return f'{public_endpoint.rstrip("/")}/{s3_path}'
     
     def append_to_tracking_file(self, file_name, entry):
         """Append an entry to a tracking file"""

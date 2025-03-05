@@ -3,7 +3,7 @@ services:
     image: heartexlabs/label-studio:latest
     ports:
       - "8080:8080"
-    env_file: "env/label-studio.env"
+    env_file: ".env"
     depends_on:
       - minio
 
@@ -12,7 +12,7 @@ services:
     ports:
       - "9000:9000"
       - "9001:9001"
-    env_file: "env/minio.env"  
+    env_file: ".env"  
     command: server /data --console-address ":9001"
 
   flask-app:
@@ -21,7 +21,7 @@ services:
       dockerfile: Dockerfile
     ports:
       - "8000:8000"
-    env_file: "env/flask-app.env"
+    env_file: ".env"
     depends_on:
       - minio
       - label-studio
@@ -30,7 +30,7 @@ services:
     build:
       context: ./scheduler
       dockerfile: Dockerfile
-    env_file: "env/scheduler.env"
+    env_file: ".env"
     depends_on:
       - minio
       - label-studio

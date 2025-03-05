@@ -10,6 +10,10 @@ from typing import Dict, List, Optional, Any, Set
 from pathlib import Path
 from urllib.parse import urljoin
 from label_studio_sdk.client import LabelStudio
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 class RandomSampler:
     """Class to handle random sampling of images for Label Studio"""
@@ -207,7 +211,7 @@ class RandomSampler:
     
     def get_already_sampled_images(self) -> Set[str]:
         """Get list of all images that have already been sent to Label Studio for any reason"""
-        sampled_filenames = set()  # Use a set for more efficient lookups
+        sampled_filenames = set()  
         
         for file_name in self.TRACKING_FILES:
             file_path = f'{self.TRACKING_BUCKET}/{file_name}'
@@ -334,13 +338,13 @@ class RandomSampler:
 
 def main():
     """Main function to run as a cron job"""
-    # Configuration from environment variables
+
     minio_endpoint = os.environ.get('MINIO_ENDPOINT', 'http://minio:9000')
     minio_public_url = os.environ.get('MINIO_PUBLIC_URL', 'http://localhost:9000')
-    minio_key = os.environ.get('MINIO_KEY', 'minioadmin')
-    minio_secret = os.environ.get('MINIO_SECRET', 'minioadmin')
+    minio_key = os.environ.get('MINIO_ROOT_USER', 'minioadmin')
+    minio_secret = os.environ.get('MINIO_ROOT_PASSWORD', 'minioadmin')
     label_studio_url = os.environ.get('LABEL_STUDIO_URL', 'http://label-studio:8080')
-    label_studio_token = os.environ.get('LABEL_STUDIO_TOKEN', "ab9927067c51ff279d340d7321e4890dc2841c4a")
+    label_studio_token = os.environ.get('LABEL_STUDIO_USER_TOKEN', "ab9927067c51ff279d340d7321e4890dc2841c4a")
     sample_count = int(os.environ.get('SAMPLE_COUNT', '3'))
     log_file = '/var/log/random_sampler.log'
     
