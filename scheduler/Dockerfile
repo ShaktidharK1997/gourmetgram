@@ -13,6 +13,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY process_labels.py .
 COPY random_sampler.py /app/random_sampler.py
 RUN chmod +x /app/random_sampler.py
+COPY test_suite_generator.py /app/test_suite_generator.py
+RUN chmod +x /app/test_suite_generator.py
 COPY crontab /etc/cron.d/process-labels-cron
 COPY start.sh .
 
