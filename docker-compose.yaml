@@ -1,0 +1,18 @@
+services:
+  minio:
+    image: minio/minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    env_file: ".env"  
+    command: server /data --console-address ":9001"
+    
+  flask-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    env_file: ".env"
+    depends_on:
+      - minio

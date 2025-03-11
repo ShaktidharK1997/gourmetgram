@@ -1,6 +1,14 @@
-Flask
-numpy
-Pillow
+Flask>=2.0.0
+numpy>=1.20.0
+Pillow>=8.0.0
 --extra-index-url https://download.pytorch.org/whl/cpu
 torch==2.5.1+cpu
 torchvision==0.20.1+cpu
+s3fs>=2023.1.0
+boto3>=1.24.0
+python-dotenv>=0.19.0
+werkzeug>=2.0.0
+alibi-detect>=0.10.0
+scikit-learn>=1.0.0
+scipy>=1.7.0
+matplotlib>=3.4.0
