@@ -185,13 +185,8 @@ class StorageManager:
     
     def get_public_url(self, s3_path):
         """Get the public URL for an image"""
-        # Get endpoint from environment
-        minio_endpoint = os.getenv('MINIO_ENDPOINT')
-        
-        # Convert to localhost if needed for external access
+        minio_endpoint = os.getenv('MINIO_ENDPOINT')  
         public_endpoint = minio_endpoint.replace('http://minio:9000', 'http://localhost:9000')
-        
-        # Public URL to access image
         return f'{public_endpoint.rstrip("/")}/{s3_path}'
     
     def append_to_tracking_file(self, file_name, entry):
@@ -199,17 +194,14 @@ class StorageManager:
         file_path = f'{self.TRACKING_BUCKET}/{file_name}'
         
         try:
-            # Read existing data
             if self.fs.exists(file_path):
                 with self.fs.open(file_path, 'r') as f:
                     data = json.load(f)
             else:
                 data = []
             
-            # Append new entry
             data.append(entry)
             
-            # Write back to file
             with self.fs.open(file_path, 'w') as f:
                 json.dump(data, f, indent=2)
                 
