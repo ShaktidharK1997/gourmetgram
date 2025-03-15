@@ -36,11 +36,11 @@ class RandomSampler:
     
     def __init__(
         self, 
-        minio_endpoint: str = 'http://minio:9000',
-        minio_public_url: str = 'http://localhost:9000',
-        minio_key: str = 'minioadmin',
-        minio_secret: str = 'minioadmin',
-        label_studio_url: str = 'http://label-studio:8080',
+        minio_endpoint: str,
+        minio_public_url: str,
+        minio_key: str,
+        minio_secret: str,
+        label_studio_url: str,
         label_studio_token: Optional[str] = None,
         sample_count: int = 3,
         log_file: str = '/var/log/random_sampler.log'
@@ -148,21 +148,19 @@ class RandomSampler:
         """Add an entry to a tracking file"""
         file_path = f'{self.TRACKING_BUCKET}/{file_name}'
         
-        try:
-            if self.fs.exists(file_path):
-                data = self._read_json_file(file_path)
-            else:
-                data = []
+        if self.fs.exists(file_path):
+            data = self._read_json_file(file_path)
+        else:
+            data = []
+        
+        data.append(entry)
+        
+        success = self._write_json_file(file_path, data)
+        if success:
+            self.logger.info(f"Added entry to {file_name}")
             
-            data.append(entry)
-            
-            success = self._write_json_file(file_path, data)
-            if success:
-                self.logger.info(f"Added entry to {file_name}")
-            return success
-        except Exception as e:
-            self.logger.error(f"Error appending to tracking file {file_name}: {e}")
-            return False
+        return success
+
     
     def get_all_images(self) -> List[Dict]:
         """Get all images from the production-images bucket"""
@@ -245,7 +243,6 @@ class RandomSampler:
             predicted_class = "Unknown"
         
         try:
-            # Prepare task data according to Label Studio format
             task_data = {
                 "image": image_url,
                 "ml_prediction": predicted_class,
@@ -267,7 +264,7 @@ class RandomSampler:
                 "original_prediction": predicted_class,
                 "confidence": 1.0,
                 "timestamp": datetime.datetime.now().isoformat(),
-                "model_version": "v1.0",
+                #"model_version": "v1.0",
                 "task_id": task.id,
                 "status": "pending",
                 "sampling_type": "random"
@@ -282,7 +279,7 @@ class RandomSampler:
     
     def sample_random_images(self) -> List[Dict]:
         """Sample random images from the production-images bucket"""
-        # Get all images and already sampled images (filenames only)
+        
         all_images = self.get_all_images()
         already_sampled_filenames = self.get_already_sampled_images()
         
@@ -299,7 +296,6 @@ class RandomSampler:
         # Select random images
         sample_size = min(self.sample_count, len(available_images))
         sampled_images = random.sample(available_images, sample_size)
-        self.logger.info(f"Randomly sampled {sample_size} images across all classes")
         
         # Create tasks for each sampled image
         new_tasks = []
@@ -318,7 +314,6 @@ class RandomSampler:
     def run(self) -> int:
         """Main method to execute the sampling process"""
         try:
-            self.logger.info(f"Starting random sampling process. Count: {self.sample_count}")
             tasks = self.sample_random_images()
             self.logger.info(f"Completed sampling. Created {len(tasks)} new tasks.")
             return len(tasks)
@@ -331,13 +326,13 @@ class RandomSampler:
 def main():
     """Main function to run as a cron job"""
 
-    minio_endpoint = os.environ.get('MINIO_ENDPOINT', 'http://minio:9000')
-    minio_public_url = os.environ.get('MINIO_PUBLIC_URL', 'http://localhost:9000')
-    minio_key = os.environ.get('MINIO_ROOT_USER', 'minioadmin')
-    minio_secret = os.environ.get('MINIO_ROOT_PASSWORD', 'minioadmin')
-    label_studio_url = os.environ.get('LABEL_STUDIO_URL', 'http://label-studio:8080')
-    label_studio_token = os.environ.get('LABEL_STUDIO_USER_TOKEN', "")
-    sample_count = int(os.environ.get('SAMPLE_COUNT', '3'))
+    minio_endpoint = os.environ.get('MINIO_ENDPOINT')
+    minio_public_url = os.environ.get('MINIO_PUBLIC_URL')
+    minio_key = os.environ.get('MINIO_ROOT_USER')
+    minio_secret = os.environ.get('MINIO_ROOT_PASSWORD')
+    label_studio_url = os.environ.get('LABEL_STUDIO_URL')
+    label_studio_token = os.environ.get('LABEL_STUDIO_USER_TOKEN')
+    sample_count = int(os.environ.get('SAMPLE_COUNT'))
     log_file = '/var/log/random_sampler.log'
     
     # Create and run the sampler

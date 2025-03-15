@@ -20,7 +20,6 @@ class TestSuiteGenerator:
     TRACKING_BUCKET = 'tracking'
     TEST_SUITES_BUCKET = 'test-suites'
     
-    # Test suite subdirectories
     TEST_SUITE_DIRS = ['user_feedback', 'low_confidence', 'random_sampling']
     
     # Tracking files that correspond to test suite types
@@ -32,9 +31,9 @@ class TestSuiteGenerator:
     
     def __init__(
         self, 
-        minio_endpoint: str = os.environ.get('MINIO_ENDPOINT', 'http://minio:9000'),
-        minio_key: str = os.environ.get('MINIO_ROOT_USER', 'minioadmin'),
-        minio_secret: str = os.environ.get('MINIO_ROOT_PASSWORD', 'minioadmin'),
+        minio_endpoint: str = os.environ.get('MINIO_ENDPOINT'),
+        minio_key: str = os.environ.get('MINIO_ROOT_USER'),
+        minio_secret: str = os.environ.get('MINIO_ROOT_PASSWORD'),
         log_file: str = '/var/log/test_suite_generator.log'
     ):
         """Initialize the test suite generator with storage connection details"""

@@ -52,39 +52,18 @@ class LabelProcessor:
             logger.info(f"Created new processed files tracker at {self.PROCESSED_FILES_TRACKER}")
     
     def _read_json_file(self, file_path: str) -> Optional[Any]:
-        """Read a JSON file from S3"""
-        try:
-            with self.fs.open(file_path, 'r') as f:
-                return json.load(f)
-        except FileNotFoundError:
-            logger.warning(f"File not found: {file_path}")
-            return None
-        except json.JSONDecodeError:
-            logger.error(f"Invalid JSON in file: {file_path}")
-            return None
-        except Exception as e:
-            logger.error(f"Error reading file {file_path}: {e}")
-            return None
+        with self.fs.open(file_path, 'r') as f:
+            return json.load(f)
     
     def _write_json_file(self, file_path: str, data: Any) -> bool:
-        """Write a JSON file to S3"""
-        try:
-            with self.fs.open(file_path, 'w') as f:
-                json.dump(data, f, indent=2)
-            return True
-        except Exception as e:
-            logger.error(f"Error writing to {file_path}: {e}")
-            return False
+        with self.fs.open(file_path, 'w') as f:
+            json.dump(data, f, indent=2)
+        return True
     
     def get_class_directory(self, label: str) -> Optional[str]:
-        """Convert a class label to the corresponding directory name"""
-        try:
-            class_index = np.where(self.CLASSES == label)[0][0]
-            return f"class_{class_index:02d}"
-        except (IndexError, ValueError):
-            logger.error(f"Could not find index for label: {label}")
-            return None
-    
+        class_index = np.where(self.CLASSES == label)[0][0]
+        return f"class_{class_index:02d}"
+
     def get_processed_files(self) -> List[str]:
         """Get list of already processed files"""
         data = self._read_json_file(self.PROCESSED_FILES_TRACKER)
@@ -215,37 +194,26 @@ class LabelProcessor:
         """Process all labeled tasks in the target bucket"""
         processed_count = 0
         
-        try:
-            # Get already processed files
-            processed_files = self.get_processed_files()
-            
-            # List all files in the target bucket
-            try:
-                all_files = self.fs.ls(self.TARGET_BUCKET)
-                json_files = [f for f in all_files if f not in processed_files]
-                logger.info(f"Found {len(json_files)} new JSON files to process")
-            except Exception as e:
-                logger.error(f"Error listing files in {self.TARGET_BUCKET}: {e}")
-                return processed_count
-            
-            # Process each file
-            for json_path in json_files:
-                if self.process_single_file(json_path):
-                    processed_count += 1
-            
-            return processed_count
-            
-        except Exception as e:
-            logger.error(f"Unexpected error in processing: {e}")
-            return processed_count
+        # Get already processed files
+        processed_files = self.get_processed_files()
+
+        all_files = self.fs.ls(self.TARGET_BUCKET)
+        json_files = [f for f in all_files if f not in processed_files]
+        
+        # Process each file
+        for json_path in json_files:
+            if self.process_single_file(json_path):
+                processed_count += 1
+        
+        return processed_count
 
 
 def main() -> None:
     """Main entry point for the label processor"""
     # You could load config from environment variables here
-    minio_endpoint = os.environ.get('MINIO_ENDPOINT', 'http://minio:9000')
-    minio_key = os.environ.get('MINIO_ROOT_USER','minioadmin')
-    minio_secret = os.environ.get('MINIO_ROOT_PASSWORD','minioadmin')
+    minio_endpoint = os.environ.get('MINIO_ENDPOINT')
+    minio_key = os.environ.get('MINIO_ROOT_USER')
+    minio_secret = os.environ.get('MINIO_ROOT_PASSWORD')
     
     processor = LabelProcessor(minio_endpoint, minio_key, minio_secret)
     processed_count = processor.process_label_studio_results()
