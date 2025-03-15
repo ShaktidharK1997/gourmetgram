@@ -14,18 +14,14 @@ from io import BytesIO
 from storage import StorageManager
 from utils import setup_logging, generate_unique_filename
 
-# Set up logging
 logger = setup_logging()
 
 app = Flask(__name__)
 
-# Initialize storage manager
 storage_manager = StorageManager()
 
-# Store temporary image data
 temp_predictions = {}
 
-# Load model and model info
 try:
     model = torch.load("/app/food11.pth", map_location=torch.device('cpu'))
     with open("/app/food11_info.json", "r") as f:
@@ -46,7 +42,7 @@ def preprocess_image(img):
     return transform(img).unsqueeze(0)
 
 def model_predict(img_data, model):
-    # Handle image data directly instead of a path
+
     img = Image.open(BytesIO(img_data)).convert('RGB')
     img = preprocess_image(img)
     
@@ -58,10 +54,8 @@ def model_predict(img_data, model):
         output = model(img)
         prob, predicted_class = torch.max(output, 1)
         
-        # Get softmax probabilities
         softmax_probs = torch.nn.functional.softmax(output, dim=1).squeeze().cpu().numpy()
     
-    # Return predicted class, confidence, class index, and all probabilities
     return classes[predicted_class.item()], torch.sigmoid(prob).item(), predicted_class.item(), softmax_probs
 
 @app.route('/', methods=['GET'])
@@ -72,22 +66,17 @@ def index():
 def upload():
     if request.method == 'POST':
         try:
-            # Get the file from post request
             f = request.files['file']
             if not f:
                 return '<a href="#" class="badge badge-warning">No file uploaded</a>'
                 
-            # Secure the filename and make it unique
             original_filename = secure_filename(f.filename)
             unique_filename = generate_unique_filename(original_filename)
             
-            # Read file data directly
             file_data = f.read()
             
-            # Make prediction using the file data directly
             predicted_class, confidence, predicted_class_idx, softmax_probs = model_predict(file_data, model)
             
-            # Upload the file to storage in the predicted class folder
             s3_path = storage_manager.upload_image(
                 file_data, 
                 unique_filename, 
@@ -97,10 +86,8 @@ def upload():
             if not s3_path:
                 return '<a href="#" class="badge badge-danger">Error uploading image</a>'
             
-            # Get public URL
             public_url = storage_manager.get_public_url(s3_path)
             
-            # Generate a prediction ID
             prediction_id = str(uuid.uuid4())
             
             # Store the prediction temporarily
@@ -138,22 +125,9 @@ def upload():
             )
             
             # Check for drift if we have enough images
-            drift_result = storage_manager.check_for_drift(model_info["model_info"]["version"])
-            if drift_result and drift_result.get('is_drift', False):
-                logger.warning(f"DRIFT DETECTED! p-value: {drift_result['p_value']:.4f}")
-            
-            # Create dropdown options for all classes
-            classes = ["Bread", "Dairy product", "Dessert", "Egg", "Fried food",
-                "Meat", "Noodles/Pasta", "Rice", "Seafood", "Soup",
-                "Vegetable/Fruit"]
-            
-            class_options = ''
-            for i, class_name in enumerate(classes):
-                selected = 'selected' if i == predicted_class_idx else ''
-                class_options += f'<option value="{i}" {selected}>{class_name}</option>'
+            drift_result = storage_manager.check_for_drift(model_info["model_info"]["version"])  
             
             return '<button type="button" class="btn btn-info btn-sm">' + str(predicted_class) + '</button>' 
-            
         
         except Exception as e:
             logger.error(f"Error processing file: {e}")
@@ -161,77 +135,38 @@ def upload():
     
     return '<a href="#" class="badge badge-warning">Warning</a>'
 
-@app.route('/feedback', methods=['POST'])
-def submit_feedback():
-    try:
-        data = request.json
-        prediction_id = data.get('prediction_id')
-        feedback = data.get('feedback', 'not_available')
-        
-        if prediction_id not in temp_predictions:
-            return jsonify({'status': 'error', 'message': 'Prediction ID not found'}), 404
-        
-        # Get prediction data
-        prediction = temp_predictions[prediction_id]
-        
-        response = {
-            'status': 'success',
-            'message': 'Thank you for your feedback!'
-        }
-        
-        # Only additional action needed is cleanup
-        if feedback == 'yes':
-            # No need to move the file, it's already in the correct directory
-            logger.info(f"User confirmed correct classification for {prediction_id}")
-        
-        # Cleanup
-        del temp_predictions[prediction_id]
-        
-        return jsonify(response)
-    
-    except Exception as e:
-        logger.error(f"Error processing feedback: {e}")
-        return jsonify({'status': 'error', 'message': str(e)}), 500
-
-
 @app.route('/drift_status', methods=['GET'])
 def drift_status():
+    
     """Get the status of drift detection"""
-    try:
-        # Get latest drift detection results
-        drift_results = storage_manager.read_tracking_file("drift_detection.json")
-        
-        # Sort by timestamp
-        if drift_results:
-            drift_results.sort(key=lambda x: x.get('timestamp', ''), reverse=True)
-            latest_result = drift_results[0]
-            
-            return jsonify({
-                "status": "success",
-                "drift_detected": latest_result.get('is_drift', False),
-                "p_value": latest_result.get('p_value', 1.0),
-                "timestamp": latest_result.get('timestamp', ''),
-                "buffer_size": latest_result.get('buffer_size', 0),
-                "model_version": latest_result.get('model_version', 'unknown')
-            })
-        
-        return jsonify({
-            "status": "success",
-            "message": "No drift detection results available",
-            "drift_detected": False
-        })
-        
-    except Exception as e:
-        logger.error(f"Error getting drift status: {e}")
-        return jsonify({
-            "status": "error",
-            "message": f"Failed to get drift status: {str(e)}"
-        }), 500
+     
+    drift_results = storage_manager.read_tracking_file("drift_detection.json")
+     
+    if drift_results:
+        drift_results.sort(key = lambda x:x.get('timestamp',''), reverse=True)
+         
+        return jsonify(
+            {
+                "status" : "success",
+                "drift_results" : drift_results
+            }
+        )
+    else:
+        return jsonify(
+            {
+                "status" : "fail",
+                "message" : "No Drift results currently"
+            }
+        )
+
+@app.route('/admin', methods=['GET'])
+def admin_dashboard():
+    """Admin dashboard to view model drift results"""
+    return render_template('admin.html')
 
 @app.route('/test', methods=['GET'])
 def test():
     try:
-        # Read a test image from a fixed location
         with open("/app/test_image.jpeg", "rb") as f:
             test_image_data = f.read()
         preds, probs, _, _ = model_predict(test_image_data, model)

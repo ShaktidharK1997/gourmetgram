@@ -24,22 +24,21 @@ class StorageManager:
     def __init__(self):
         self.initialize_storage()
         self.drift_buffer = []
-        self.drift_buffer_size = 8
+        self.drift_buffer_size = int(os.getenv('BUFFER_SIZE'))
         self.drift_detector = None
         
-        # Define image transformation for drift detection
         self.transform = transforms.Compose([
             transforms.Resize((224, 224)),
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
         ])
         
-        # Load drift detector
         try:
             self.drift_detector = load_detector('/app/detector_pt')
             logger.info("Drift detector loaded successfully")
         except Exception as e:
             logger.error(f"Error loading drift detector: {e}")
+
         
     def initialize_storage(self):
         """Initialize storage connections and buckets"""
@@ -49,7 +48,6 @@ class StorageManager:
             minio_password = os.getenv('MINIO_ROOT_PASSWORD')
             minio_endpoint = os.getenv('MINIO_ENDPOINT')
             
-            # Initialize S3 filesystem
             self.fs = s3fs.S3FileSystem(
                 key=minio_user,
                 secret=minio_password,
@@ -57,36 +55,28 @@ class StorageManager:
                     'endpoint_url': minio_endpoint
                 }
             )
-            
-            # Create buckets if they don't exist
-            self.BUCKET_NAME = 'production-images'
+
+            self.PRODUCTION_BUCKET = 'production-images'
             self.TRACKING_BUCKET = 'tracking'
-            self.DRIFT_BUCKET = 'drift-detection'  # New bucket for drift detection
+            self.DRIFT_BUCKET = 'drift-detection'  
             
-            # Create main bucket
-            if not self.fs.exists(self.BUCKET_NAME):
-                self.fs.mkdir(self.BUCKET_NAME)
-                logger.info(f"Created bucket: {self.BUCKET_NAME}")
-                
-            # Set bucket policy to public
-            self._set_bucket_public_access(self.BUCKET_NAME)
+            if not self.fs.exists(self.PRODUCTION_BUCKET):
+                self.fs.mkdir(self.PRODUCTION_BUCKET)
+                logger.info(f"Created bucket: {self.PRODUCTION_BUCKET}")
             
-            # Create class subdirectories
-            for i in range(11):  # 11 food classes (0-10)
-                class_dir = f"{self.BUCKET_NAME}/class_{i:02d}"
-                if not self.fs.exists(class_dir):
-                    self.fs.mkdir(class_dir)
-                    logger.info(f"Created class subdirectory {class_dir}")
-            
-            # Create tracking bucket
             if not self.fs.exists(self.TRACKING_BUCKET):
                 self.fs.mkdir(self.TRACKING_BUCKET)
                 logger.info(f"Created bucket: {self.TRACKING_BUCKET}")
             
-            # Create drift detection bucket
             if not self.fs.exists(self.DRIFT_BUCKET):
                 self.fs.mkdir(self.DRIFT_BUCKET)
                 logger.info(f"Created bucket: {self.DRIFT_BUCKET}")
+            
+            for i in range(11):
+                class_dir = f"{self.PRODUCTION_BUCKET}/class_{i:02d}"
+                if not self.fs.exists(class_dir):
+                    self.fs.mkdir(class_dir)
+                    logger.info(f"Created class subdirectory {class_dir}")
             
             # Initialize tracking files
             self._initialize_tracking_files()
@@ -99,8 +89,7 @@ class StorageManager:
         """Create tracking files if they don't exist"""
         tracking_files = [
             'production_data.json',
-            'user_corrected_labels.json',
-            'drift_detection.json'  # New tracking file for drift detection results
+            'drift_detection.json' 
         ]
         
         for filename in tracking_files:
@@ -110,58 +99,15 @@ class StorageManager:
                     json.dump([], f)
                 logger.info(f"Created tracking file: {filename}")
     
-    def _set_bucket_public_access(self, bucket_name):
-        """Set a bucket to have public read access"""
-        try:
-            # Get environment variables
-            minio_user = os.getenv('MINIO_ROOT_USER')
-            minio_password = os.getenv('MINIO_ROOT_PASSWORD')
-            minio_endpoint = os.getenv('MINIO_ENDPOINT')
-            
-            # Create a boto3 client to interact with MinIO API
-            s3_client = boto3.client(
-                's3',
-                endpoint_url=minio_endpoint,
-                aws_access_key_id=minio_user,
-                aws_secret_access_key=minio_password,
-                region_name='us-east-1')
-          
-            # Set the bucket policy to allow public read access
-            bucket_policy = {
-                "Version": "2012-10-17",
-                "Statement": [
-                    {
-                        "Effect": "Allow",
-                        "Principal": {"AWS": "*"},
-                        "Action": ["s3:GetObject"],
-                        "Resource": [f"arn:aws:s3:::{bucket_name}/*"]
-                    }
-                ]
-            }
-            
-            # Apply the policy to the bucket
-            s3_client.put_bucket_policy(
-                Bucket=bucket_name,
-                Policy=json.dumps(bucket_policy)
-            )
-            
-            logger.info(f"Successfully set {bucket_name} bucket to public read access")
-            return True
-        except Exception as e:
-            logger.error(f"Error setting bucket {bucket_name} to public: {e}")
-            return False
-    
     def upload_image(self, file_data, filename, class_idx):
         """Upload an image to the appropriate class directory"""
         try:
             class_dir = f"class_{class_idx:02d}"
-            s3_path = f'{self.BUCKET_NAME}/{class_dir}/{filename}'
+            s3_path = f'{self.PRODUCTION_BUCKET}/{class_dir}/{filename}'
             
-            # Upload to MinIO using s3fs
             with self.fs.open(s3_path, 'wb') as s3_file:
                 s3_file.write(file_data)
             
-            logger.info(f"Successfully uploaded {filename} to {s3_path}")
             return s3_path
         except Exception as e:
             logger.error(f"Error uploading file to storage: {e}")
@@ -171,41 +117,33 @@ class StorageManager:
         """Upload an image to the drift detection bucket and preprocess for drift detection"""
         try:
             s3_path = f'{self.DRIFT_BUCKET}/{filename}'
+
+            img = Image.open(io.BytesIO(file_data)).convert('RGB')
+            img_tensor = self.transform(img).unsqueeze(0)  # Add batch dimension
             
-            # Upload to MinIO using s3fs
+            img_array = img_tensor.numpy()
+            
+            buffer_entry = {
+                'image_path': s3_path,
+                'filename': filename,
+                'preprocessed_image': img_array
+            }
+            
+            if len(self.drift_buffer) == self.drift_buffer_size:
+                files_to_remove = self.fs.ls(self.DRIFT_BUCKET)
+                
+                for file_path in files_to_remove:
+                    self.fs.rm(file_path)
+
+                self.drift_buffer.clear()
+                
             with self.fs.open(s3_path, 'wb') as s3_file:
                 s3_file.write(file_data)
             
-            # Preprocess image for drift detection
-            try:
-                img = Image.open(io.BytesIO(file_data)).convert('RGB')
-                img_tensor = self.transform(img).unsqueeze(0)  # Add batch dimension
-                
-                # Convert to numpy for drift detection later
-                img_array = img_tensor.numpy()
-                
-                # Add to drift buffer
-                buffer_entry = {
-                    'image_path': s3_path,
-                    'filename': filename,
-                    'preprocessed_image': img_array
-                }
-                
-                self.drift_buffer.append(buffer_entry)
-                
-                # Check if we need to manage buffer size
-                if len(self.drift_buffer) > self.drift_buffer_size:
-                    # Remove oldest image from bucket and buffer
-                    oldest = self.drift_buffer.pop(0)
-                    if self.fs.exists(oldest['image_path']):
-                        self.fs.rm(oldest['image_path'])
-                        logger.info(f"Removed oldest image from drift buffer: {oldest['filename']}")
-                
-                logger.info(f"Successfully uploaded {filename} to drift bucket, buffer size: {len(self.drift_buffer)}")
-                return s3_path
-            except Exception as e:
-                logger.error(f"Error preprocessing image for drift detection: {e}")
-                return s3_path
+            self.drift_buffer.append(buffer_entry)
+            
+            logger.info(f"Successfully uploaded {filename} to drift bucket, buffer size: {len(self.drift_buffer)}")
+            return s3_path
         
         except Exception as e:
             logger.error(f"Error uploading file to drift bucket: {e}")
@@ -225,11 +163,8 @@ class StorageManager:
             # Extract preprocessed images from buffer
             preprocessed_images = np.vstack([entry['preprocessed_image'] for entry in self.drift_buffer])
             
-            # Detect drift
-            logger.info(f"Running drift detection on {len(self.drift_buffer)} images...")
             drift_result = self.drift_detector.predict(preprocessed_images)
             
-            # Record drift detection result
             drift_data = {
                 "timestamp": datetime.datetime.now().isoformat(),
                 "model_version": model_version,
@@ -239,10 +174,8 @@ class StorageManager:
                 "buffer_filenames": [entry['filename'] for entry in self.drift_buffer]
             }
             
-            # Append to drift detection tracking file
             self.append_to_tracking_file("drift_detection.json", drift_data)
-            
-            logger.info(f"Drift detection result: {drift_data['is_drift']} (p-value: {drift_data['p_value']:.4f})")
+    
             return drift_data
         
         except Exception as e:

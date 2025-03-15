@@ -1,0 +1,95 @@
+{% extends "base.html" %} {% block content %}
+
+<div class="container mt-4">
+    <h2>GourmetGram Admin Dashboard</h2>
+    <div class="card mt-4">
+        <div class="card-header">
+            <h5>Model Drift Analysis</h5>
+        </div>
+        <div class="card-body">
+            <div id="drift-status-loading" class="text-center">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p class="mt-2">Loading drift detection results...</p>
+            </div>
+            <div id="drift-status-error" class="alert alert-danger" style="display: none;">
+                Error loading drift detection data.
+            </div>
+            <div id="drift-status-empty" class="alert alert-info" style="display: none;">
+                No drift detection results available.
+            </div>
+            <div id="drift-status-results" style="display: none;">
+                <div class="row">
+                    <div class="col-md-12">
+                        <div class="table-responsive">
+                            <table class="table table-striped table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Timestamp</th>
+                                        <th>Model Version</th>
+                                        <th>Drift Detected</th>
+                                        <th>P-Value</th>
+                                        <th>Buffer Size</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="drift-results-table">
+                                    <!-- Results will be populated here -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    $(document).ready(function() {
+        // Fetch drift detection data
+        $.ajax({
+            url: '/drift_status',
+            type: 'GET',
+            dataType: 'json',
+            success: function(response) {
+                $('#drift-status-loading').hide();
+                
+                if (response.status === 'success' && response.drift_results && response.drift_results.length > 0) {
+                    $('#drift-status-results').show();
+                    
+                    // Clear any existing data
+                    $('#drift-results-table').empty();
+                    
+                    // Populate table with drift results
+                    response.drift_results.forEach(function(result) {
+                        const formattedTimestamp = new Date(result.timestamp).toLocaleString();
+                        const driftStatus = result.is_drift ? 
+                            '<span class="badge bg-danger">Detected</span>' : 
+                            '<span class="badge bg-success">Not Detected</span>';
+                        
+                        $('#drift-results-table').append(`
+                            <tr>
+                                <td>${formattedTimestamp}</td>
+                                <td>${result.model_version || 'Unknown'}</td>
+                                <td>${driftStatus}</td>
+                                <td>${result.p_value ? result.p_value.toFixed(4) : 'N/A'}</td>
+                                <td>${result.buffer_size || 'N/A'}</td>
+                            </tr>
+                        `);
+                    });
+                } else if (response.status === 'fail' || (response.status === 'success' && (!response.drift_results || response.drift_results.length === 0))) {
+                    $('#drift-status-empty').show();
+                } else {
+                    $('#drift-status-error').show();
+                }
+            },
+            error: function() {
+                $('#drift-status-loading').hide();
+                $('#drift-status-error').show();
+            }
+        });
+    });
+</script>
+
+{% endblock %}

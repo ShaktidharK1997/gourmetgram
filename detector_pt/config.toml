@@ -20,7 +20,7 @@ version_warning = false
 
 [preprocess_fn]
 src = "@cd.pytorch.preprocess.preprocess_drift"
-device = "cuda"
+device = "cpu"
 batch_size = 128
 
 [preprocess_fn.model]
