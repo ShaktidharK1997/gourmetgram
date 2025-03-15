@@ -336,7 +336,7 @@ def main():
     minio_key = os.environ.get('MINIO_ROOT_USER', 'minioadmin')
     minio_secret = os.environ.get('MINIO_ROOT_PASSWORD', 'minioadmin')
     label_studio_url = os.environ.get('LABEL_STUDIO_URL', 'http://label-studio:8080')
-    label_studio_token = os.environ.get('LABEL_STUDIO_USER_TOKEN', "ab9927067c51ff279d340d7321e4890dc2841c4a")
+    label_studio_token = os.environ.get('LABEL_STUDIO_USER_TOKEN', "")
     sample_count = int(os.environ.get('SAMPLE_COUNT', '3'))
     log_file = '/var/log/random_sampler.log'
     
