@@ -18,14 +18,12 @@ load_dotenv()
 class RandomSampler:
     """Class to handle random sampling of images for Label Studio"""
     
-    # Classes mapping
     CLASSES = [
         "Bread", "Dairy product", "Dessert", "Egg", "Fried food",
         "Meat", "Noodles/Pasta", "Rice", "Seafood", "Soup",
         "Vegetable/Fruit"
     ]
     
-    # Bucket paths
     IMAGES_BUCKET = 'production-images'
     TRACKING_BUCKET = 'tracking'
     
@@ -109,7 +107,6 @@ class RandomSampler:
             )
             self.logger.info("Label Studio client initialized successfully")
             
-            # Find the existing project
             projects = self.ls.projects.list()
             for p in projects:
                 if p.title == "Food Classification Review":
@@ -152,16 +149,13 @@ class RandomSampler:
         file_path = f'{self.TRACKING_BUCKET}/{file_name}'
         
         try:
-            # Read existing data
             if self.fs.exists(file_path):
                 data = self._read_json_file(file_path)
             else:
                 data = []
             
-            # Append new entry
             data.append(entry)
             
-            # Write back to file
             success = self._write_json_file(file_path, data)
             if success:
                 self.logger.info(f"Added entry to {file_name}")
@@ -178,10 +172,8 @@ class RandomSampler:
         
         all_images = []
         try:
-            # List all subdirectories (class_XX)
             class_dirs = [d for d in self.fs.ls(self.IMAGES_BUCKET) if self.fs.isdir(d)]
             
-            # For each class directory, list all images
             for class_dir in class_dirs:
                 class_name = Path(class_dir).name
                 images = [
