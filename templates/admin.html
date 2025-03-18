@@ -2,26 +2,43 @@
 
 <div class="container mt-4">
     <h2>GourmetGram Admin Dashboard</h2>
-    <div class="card mt-4">
-        <div class="card-header">
-            <h5>Model Drift Analysis</h5>
-        </div>
-        <div class="card-body">
-            <div id="drift-status-loading" class="text-center">
-                <div class="spinner-border text-primary" role="status">
-                    <span class="visually-hidden">Loading...</span>
+    
+    <!-- Tabs for different types of drift -->
+    <ul class="nav nav-tabs mt-4" id="driftTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="feature-drift-tab" data-bs-toggle="tab" 
+                    data-bs-target="#feature-drift" type="button" role="tab" 
+                    aria-controls="feature-drift" aria-selected="true">Feature Drift</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="label-drift-tab" data-bs-toggle="tab" 
+                    data-bs-target="#label-drift" type="button" role="tab" 
+                    aria-controls="label-drift" aria-selected="false">Label Drift</button>
+        </li>
+    </ul>
+    
+    <!-- Tab content -->
+    <div class="tab-content" id="driftTabsContent">
+        <!-- Feature Drift Tab -->
+        <div class="tab-pane fade show active" id="feature-drift" role="tabpanel" aria-labelledby="feature-drift-tab">
+            <div class="card mt-3">
+                <div class="card-header">
+                    <h5>Feature Drift Analysis</h5>
                 </div>
-                <p class="mt-2">Loading drift detection results...</p>
-            </div>
-            <div id="drift-status-error" class="alert alert-danger" style="display: none;">
-                Error loading drift detection data.
-            </div>
-            <div id="drift-status-empty" class="alert alert-info" style="display: none;">
-                No drift detection results available.
-            </div>
-            <div id="drift-status-results" style="display: none;">
-                <div class="row">
-                    <div class="col-md-12">
+                <div class="card-body">
+                    <div id="feature-drift-loading" class="text-center">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="mt-2">Loading feature drift detection results...</p>
+                    </div>
+                    <div id="feature-drift-error" class="alert alert-danger" style="display: none;">
+                        Error loading feature drift detection data.
+                    </div>
+                    <div id="feature-drift-empty" class="alert alert-info" style="display: none;">
+                        No feature drift detection results available.
+                    </div>
+                    <div id="feature-drift-results" style="display: none;">
                         <div class="table-responsive">
                             <table class="table table-striped table-hover">
                                 <thead>
@@ -33,10 +50,68 @@
                                         <th>Buffer Size</th>
                                     </tr>
                                 </thead>
-                                <tbody id="drift-results-table">
+                                <tbody id="feature-drift-table">
                                     <!-- Results will be populated here -->
                                 </tbody>
                             </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Label Drift Tab -->
+        <div class="tab-pane fade" id="label-drift" role="tabpanel" aria-labelledby="label-drift-tab">
+            <div class="card mt-3">
+                <div class="card-header">
+                    <h5>Label Drift Analysis</h5>
+                </div>
+                <div class="card-body">
+                    <div id="label-drift-loading" class="text-center">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="mt-2">Loading label drift detection results...</p>
+                    </div>
+                    <div id="label-drift-error" class="alert alert-danger" style="display: none;">
+                        Error loading label drift detection data.
+                    </div>
+                    <div id="label-drift-empty" class="alert alert-info" style="display: none;">
+                        No label drift detection results available.
+                    </div>
+                    <div id="label-drift-results" style="display: none;">
+                        <div class="row">
+                            <div class="col-md-8">
+                                <div class="table-responsive">
+                                    <table class="table table-striped table-hover">
+                                        <thead>
+                                            <tr>
+                                                <th>Timestamp</th>
+                                                <th>Model Version</th>
+                                                <th>Drift Detected</th>
+                                                <th>P-Value</th>
+                                                <th>Buffer Size</th>
+                                                <th>Details</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="label-drift-table">
+                                            <!-- Results will be populated here -->
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="card">
+                                    <div class="card-header">
+                                        <h6>Class Distribution</h6>
+                                    </div>
+                                    <div class="card-body">
+                                        <div id="class-distribution-container">
+                                            <p class="text-muted">Select a row to view class distribution</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -47,46 +122,131 @@
 
 <script>
     $(document).ready(function() {
-        // Fetch drift detection data
+        // Food class names for readable labels
+        const foodClasses = {
+            "0": "Bread",
+            "1": "Dairy product",
+            "2": "Dessert",
+            "3": "Egg",
+            "4": "Fried food",
+            "5": "Meat",
+            "6": "Noodles/Pasta",
+            "7": "Rice",
+            "8": "Seafood",
+            "9": "Soup",
+            "10": "Vegetable/Fruit"
+        };
+        
+        // Fetch all drift detection data
         $.ajax({
             url: '/drift_status',
             type: 'GET',
             dataType: 'json',
             success: function(response) {
-                $('#drift-status-loading').hide();
+                $('#feature-drift-loading').hide();
+                $('#label-drift-loading').hide();
                 
                 if (response.status === 'success' && response.drift_results && response.drift_results.length > 0) {
-                    $('#drift-status-results').show();
+                    // Filter results by drift type
+                    const featureDriftResults = response.drift_results.filter(result => result.type === 'feature_drift');
+                    const labelDriftResults = response.drift_results.filter(result => result.type === 'label_drift');
                     
-                    // Clear any existing data
-                    $('#drift-results-table').empty();
-                    
-                    // Populate table with drift results
-                    response.drift_results.forEach(function(result) {
-                        const formattedTimestamp = new Date(result.timestamp).toLocaleString();
-                        const driftStatus = result.is_drift ? 
-                            '<span class="badge bg-danger">Detected</span>' : 
-                            '<span class="badge bg-success">Not Detected</span>';
+                    // Handle feature drift results
+                    if (featureDriftResults.length > 0) {
+                        $('#feature-drift-results').show();
+                        $('#feature-drift-table').empty();
                         
-                        $('#drift-results-table').append(`
-                            <tr>
-                                <td>${formattedTimestamp}</td>
-                                <td>${result.model_version || 'Unknown'}</td>
-                                <td>${driftStatus}</td>
-                                <td>${result.p_value ? result.p_value.toFixed(4) : 'N/A'}</td>
-                                <td>${result.buffer_size || 'N/A'}</td>
-                            </tr>
-                        `);
-                    });
-                } else if (response.status === 'fail' || (response.status === 'success' && (!response.drift_results || response.drift_results.length === 0))) {
-                    $('#drift-status-empty').show();
+                        featureDriftResults.forEach(function(result) {
+                            const formattedTimestamp = new Date(result.timestamp).toLocaleString();
+                            const driftStatus = result.is_drift ? 
+                                '<span class="badge bg-danger">Detected</span>' : 
+                                '<span class="badge bg-success">Not Detected</span>';
+                            
+                            $('#feature-drift-table').append(`
+                                <tr>
+                                    <td>${formattedTimestamp}</td>
+                                    <td>${result.model_version || 'Unknown'}</td>
+                                    <td>${driftStatus}</td>
+                                    <td>${result.p_value ? result.p_value.toFixed(4) : 'N/A'}</td>
+                                    <td>${result.buffer_size || 'N/A'}</td>
+                                </tr>
+                            `);
+                        });
+                    } else {
+                        $('#feature-drift-empty').show();
+                    }
+                    
+                    // Handle label drift results
+                    if (labelDriftResults.length > 0) {
+                        $('#label-drift-results').show();
+                        $('#label-drift-table').empty();
+                        
+                        labelDriftResults.forEach(function(result, index) {
+                            const formattedTimestamp = new Date(result.timestamp).toLocaleString();
+                            const driftStatus = result.is_drift ? 
+                                '<span class="badge bg-danger">Detected</span>' : 
+                                '<span class="badge bg-success">Not Detected</span>';
+                            
+                            $('#label-drift-table').append(`
+                                <tr data-index="${index}" class="label-row">
+                                    <td>${formattedTimestamp}</td>
+                                    <td>${result.model_version || 'Unknown'}</td>
+                                    <td>${driftStatus}</td>
+                                    <td>${result.p_value ? result.p_value.toFixed(4) : 'N/A'}</td>
+                                    <td>${result.buffer_size || 'N/A'}</td>
+                                    <td><button class="btn btn-sm btn-primary view-distribution" data-index="${index}">View</button></td>
+                                </tr>
+                            `);
+                        });
+                        
+                        // Add click handler for viewing class distribution
+                        $('.view-distribution').on('click', function() {
+                            const index = $(this).data('index');
+                            const result = labelDriftResults[index];
+                            
+                            if (result.class_distribution) {
+                                let distributionHtml = '<ul class="list-group">';
+                                
+                                // Sort classes by count (descending)
+                                const sortedClasses = Object.entries(result.class_distribution)
+                                    .sort((a, b) => b[1] - a[1]);
+                                
+                                sortedClasses.forEach(([classId, count]) => {
+                                    const className = foodClasses[classId] || `Class ${classId}`;
+                                    const percentage = ((count / result.buffer_size) * 100).toFixed(1);
+                                    
+                                    distributionHtml += `
+                                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                                            ${className}
+                                            <span>
+                                                ${count} (${percentage}%)
+                                                <div class="progress" style="width: 100px; height: 8px;">
+                                                    <div class="progress-bar" role="progressbar" style="width: ${percentage}%"></div>
+                                                </div>
+                                            </span>
+                                        </li>
+                                    `;
+                                });
+                                
+                                distributionHtml += '</ul>';
+                                $('#class-distribution-container').html(distributionHtml);
+                            } else {
+                                $('#class-distribution-container').html('<p class="text-muted">No class distribution data available</p>');
+                            }
+                        });
+                    } else {
+                        $('#label-drift-empty').show();
+                    }
                 } else {
-                    $('#drift-status-error').show();
+                    $('#feature-drift-empty').show();
+                    $('#label-drift-empty').show();
                 }
             },
             error: function() {
-                $('#drift-status-loading').hide();
-                $('#drift-status-error').show();
+                $('#feature-drift-loading').hide();
+                $('#label-drift-loading').hide();
+                $('#feature-drift-error').show();
+                $('#label-drift-error').show();
             }
         });
     });

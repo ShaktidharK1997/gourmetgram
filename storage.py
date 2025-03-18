@@ -23,6 +23,8 @@ class StorageManager:
     
     def __init__(self):
         self.initialize_storage()
+        self.label_buffer = []
+        self.label_buffer_size = 100
         self.drift_buffer = []
         self.drift_buffer_size = int(os.getenv('BUFFER_SIZE'))
         self.drift_detector = None
@@ -36,6 +38,8 @@ class StorageManager:
         try:
             self.drift_detector = load_detector('/app/detector_pt')
             logger.info("Drift detector loaded successfully")
+            self.label_drift_detector = load_detector('/app/label_shift_detector_pt')
+            logger.info("Label drift detector loaded successfully")
         except Exception as e:
             logger.error(f"Error loading drift detector: {e}")
 
@@ -89,7 +93,8 @@ class StorageManager:
         """Create tracking files if they don't exist"""
         tracking_files = [
             'production_data.json',
-            'drift_detection.json' 
+            'drift_detection.json',
+            'drift_detection_label_shift.json'
         ]
         
         for filename in tracking_files:
@@ -113,13 +118,72 @@ class StorageManager:
             logger.error(f"Error uploading file to storage: {e}")
             return None
     
+    def update_label_buffer(self, predicted_class_idx):
+        """
+        Add a predicted label to the buffer for label drift detection
+        
+        Args:
+            predicted_class_idx: Class index predicted by the model
+        """
+            
+        self.label_buffer.append(predicted_class_idx)
+        
+        logger.info(f"Updated label buffer, size: {len(self.label_buffer)}/{self.label_buffer_size}")
+        
+    def check_for_label_drift(self, model_version):
+        """Check for label drift using disjoint sets of predictions"""
+        if not self.label_drift_detector:
+            logger.warning("Label drift detector not available")
+            return None
+        
+        # Minimum sample needed for reliable detection
+        min_buffer_size = self.label_buffer_size
+        
+        if len(self.label_buffer) < min_buffer_size:
+            logger.info(f"Not enough labels in buffer for drift detection: {len(self.label_buffer)}/{min_buffer_size}")
+            return None
+        
+        try:
+            # Prepare labels in the format expected by the detector (2D array)
+            labels = np.array(self.label_buffer).reshape(-1, 1)
+            
+            # Run drift detection
+            drift_result = self.label_drift_detector.predict(labels, return_p_val=True, return_distance=True)
+            
+            drift_data = {
+                "timestamp": datetime.datetime.now().isoformat(),
+                "model_version": model_version,
+                "is_drift": bool(drift_result['data']['is_drift']),
+                "p_value": float(drift_result['data']['p_val']),
+                "buffer_size": len(self.label_buffer),
+                "type": "label_drift"
+            }
+            
+            # Include class distribution for analysis
+            class_counts = np.bincount(np.array(self.label_buffer), minlength=11)
+            class_distribution = {str(i): int(count) for i, count in enumerate(class_counts)}
+            drift_data["class_distribution"] = class_distribution
+            
+            # Log the result
+            self.append_to_tracking_file("drift_detection_label_shift.json", drift_data)
+            
+            # Clear the buffer after processing this batch
+            self.label_buffer = []
+            logger.info("Label buffer cleared after drift check")
+            
+            return drift_data
+        
+        except Exception as e:
+            logger.error(f"Error checking for label drift: {e}")
+            return None
+        
     def upload_to_drift_bucket(self, file_data, filename):
         """Upload an image to the drift detection bucket and preprocess for drift detection"""
-        try:
+        try:   
             s3_path = f'{self.DRIFT_BUCKET}/{filename}'
 
             img = Image.open(io.BytesIO(file_data)).convert('RGB')
-            img_tensor = self.transform(img).unsqueeze(0)  # Add batch dimension
+            img_tensor = self.transform(img).unsqueeze(0) 
             
             img_array = img_tensor.numpy()
             
@@ -163,7 +227,7 @@ class StorageManager:
             # Extract preprocessed images from buffer
             preprocessed_images = np.vstack([entry['preprocessed_image'] for entry in self.drift_buffer])
             
-            drift_result = self.drift_detector.predict(preprocessed_images)
+            drift_result = self.drift_detector.predict(preprocessed_images, return_p_val=True, return_distance=True)
             
             drift_data = {
                 "timestamp": datetime.datetime.now().isoformat(),
@@ -171,7 +235,8 @@ class StorageManager:
                 "is_drift": bool(drift_result['data']['is_drift']),
                 "p_value": float(drift_result['data']['p_val']),
                 "buffer_size": len(self.drift_buffer),
-                "buffer_filenames": [entry['filename'] for entry in self.drift_buffer]
+                "buffer_filenames": [entry['filename'] for entry in self.drift_buffer],
+                "type":"feature_drift"
             }
             
             self.append_to_tracking_file("drift_detection.json", drift_data)

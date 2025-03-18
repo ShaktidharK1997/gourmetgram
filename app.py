@@ -126,6 +126,15 @@ def upload():
             
             # Check for drift if we have enough images
             drift_result = storage_manager.check_for_drift(model_info["model_info"]["version"])  
+
+            # Update label buffer for label drift detection
+            storage_manager.update_label_buffer(predicted_class_idx)
+            
+            # Check for feature drift
+            feature_drift_result = storage_manager.check_for_drift(model_info["model_info"]["version"])
+            
+            # Check for label drift
+            label_drift_result = storage_manager.check_for_label_drift(model_info["model_info"]["version"])
             
             return '<button type="button" class="btn btn-info btn-sm">' + str(predicted_class) + '</button>' 
         
@@ -137,27 +146,32 @@ def upload():
 
 @app.route('/drift_status', methods=['GET'])
 def drift_status():
-    
     """Get the status of drift detection"""
-     
-    drift_results = storage_manager.read_tracking_file("drift_detection.json")
-     
-    if drift_results:
-        drift_results.sort(key = lambda x:x.get('timestamp',''), reverse=True)
-         
-        return jsonify(
-            {
-                "status" : "success",
-                "drift_results" : drift_results
-            }
-        )
+    
+    # Get both feature and label drift results
+    feature_drift_results = storage_manager.read_tracking_file("drift_detection.json")
+    label_drift_results = storage_manager.read_tracking_file("drift_detection_label_shift.json")
+    
+    # Combine results
+    all_drift_results = []
+    if feature_drift_results:
+        all_drift_results.extend(feature_drift_results)
+    if label_drift_results:
+        all_drift_results.extend(label_drift_results)
+    
+    if all_drift_results:
+        # Sort by timestamp (newest first)
+        all_drift_results.sort(key=lambda x: x.get('timestamp', ''), reverse=True)
+        
+        return jsonify({
+            "status": "success",
+            "drift_results": all_drift_results
+        })
     else:
-        return jsonify(
-            {
-                "status" : "fail",
-                "message" : "No Drift results currently"
-            }
-        )
+        return jsonify({
+            "status": "fail",
+            "message": "No drift results currently"
+        })
 
 @app.route('/admin', methods=['GET'])
 def admin_dashboard():
