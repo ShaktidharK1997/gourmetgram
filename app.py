@@ -118,23 +118,18 @@ def upload():
             storage_manager.append_to_tracking_file("production_data.json", production_data)
             logger.info(f"Stored production data for prediction {prediction_id}")
             
-            # Upload to drift detection bucket
-            drift_path = storage_manager.upload_to_drift_bucket(
+            # Upload for feature defect detection
+            storage_manager.upload_to_drift_bucket_and_check_drift(
                 file_data,
-                f"drift_{unique_filename}"
+                f"drift_{unique_filename}",
+                model_info["model_info"]["version"]
             )
-            
-            # Check for drift if we have enough images
-            drift_result = storage_manager.check_for_drift(model_info["model_info"]["version"])  
 
-            # Update label buffer for label drift detection
-            storage_manager.update_label_buffer(predicted_class_idx)
-            
-            # Check for feature drift
-            feature_drift_result = storage_manager.check_for_drift(model_info["model_info"]["version"])
-            
-            # Check for label drift
-            label_drift_result = storage_manager.check_for_label_drift(model_info["model_info"]["version"])
+            # Update for label drift detection
+            storage_manager.update_label_buffer_and_check_drift(
+                predicted_class_idx,
+                model_info["model_info"]["version"]
+                )
             
             return '<button type="button" class="btn btn-info btn-sm">' + str(predicted_class) + '</button>' 
         
