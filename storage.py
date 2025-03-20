@@ -33,9 +33,11 @@ class StorageManager:
                 }
             )
             
-            # Create buckets if they don't exist
             self.BUCKET_NAME = 'production-images'
             self.TRACKING_BUCKET = 'tracking'
+            self.TEST_SUITES_BUCKET = 'test-suites'
+            
+            self.TEST_SUITE_DIRS = ['user_corrected']
             
             # Create main bucket
             if not self.fs.exists(self.BUCKET_NAME):
@@ -56,11 +58,18 @@ class StorageManager:
             if not self.fs.exists(self.TRACKING_BUCKET):
                 self.fs.mkdir(self.TRACKING_BUCKET)
                 logger.info(f"Created bucket: {self.TRACKING_BUCKET}")
+                
+            # Create test suites bucket
+            if not self.fs.exists(self.TEST_SUITES_BUCKET):
+                self.fs.mkdir(self.TEST_SUITES_BUCKET)
+                logger.info(f"Created bucket: {self.TEST_SUITES_BUCKET}")
             
             # Initialize tracking files
             self._initialize_tracking_files()
             
-            logger.info("Storage initialized successfully")
+            # Initialize test suite directories 
+            self._setup_test_suites_structure()
+
         except Exception as e:
             logger.error(f"Error initializing storage: {e}")
     
@@ -119,17 +128,34 @@ class StorageManager:
             logger.error(f"Error setting bucket {bucket_name} to public: {e}")
             return False
     
+    def _setup_test_suites_structure(self) -> None:
+        """Create test-suites bucket and subdirectories if they don't exist"""
+        try:
+            # Create test-suites bucket if it doesn't exist
+            if not self.fs.exists(self.TEST_SUITES_BUCKET):
+                self.fs.mkdir(self.TEST_SUITES_BUCKET)
+                logger.info(f"Created bucket: {self.TEST_SUITES_BUCKET}")
+            
+            # Create subdirectories for each test suite type
+            for dir_name in self.TEST_SUITE_DIRS:
+                test_suite_dir = f"{self.TEST_SUITES_BUCKET}/{dir_name}"
+                if not self.fs.exists(test_suite_dir):
+                    self.fs.mkdir(test_suite_dir)
+                    logger.info(f"Created test suite directory: {test_suite_dir}")
+                    
+        except Exception as e:
+            logger.error(f"Error setting up test suites structure: {e}")
+            raise
+    
     def upload_image(self, file_data, filename, class_idx):
         """Upload an image to the appropriate class directory"""
         try:
             class_dir = f"class_{class_idx:02d}"
             s3_path = f'{self.BUCKET_NAME}/{class_dir}/{filename}'
             
-            # Upload to MinIO using s3fs
             with self.fs.open(s3_path, 'wb') as s3_file:
                 s3_file.write(file_data)
             
-            logger.info(f"Successfully uploaded {filename} to {s3_path}")
             return s3_path
         except Exception as e:
             logger.error(f"Error uploading file to storage: {e}")
@@ -138,20 +164,15 @@ class StorageManager:
     def move_image(self, original_path, new_class_idx):
         """Move an image to a different class directory based on user correction"""
         try:
-            # Get filename from original path
             filename = original_path.split('/')[-1]
             
-            # Define new path
             new_class_dir = f"class_{new_class_idx:02d}"
             new_path = f'{self.BUCKET_NAME}/{new_class_dir}/{filename}'
             
-            # First, copy the file to the new location
             self.fs.copy(original_path, new_path)
             
-            # Then, remove the original file
             self.fs.rm(original_path)
-            
-            logger.info(f"Successfully moved {filename} from {original_path} to {new_path}")
+
             return new_path
         except Exception as e:
             logger.error(f"Error moving file: {e}")
@@ -159,13 +180,10 @@ class StorageManager:
     
     def get_public_url(self, s3_path):
         """Get the public URL for an image"""
-        # Get endpoint from environment
         minio_endpoint = os.getenv('MINIO_ENDPOINT')
-        
-        # Convert to localhost if needed for external access
+
         public_endpoint = minio_endpoint.replace('http://minio:9000', 'http://localhost:9000')
         
-        # Public URL to access image
         return f'{public_endpoint.rstrip("/")}/{s3_path}'
     
     def append_to_tracking_file(self, file_name, entry):
@@ -173,21 +191,17 @@ class StorageManager:
         file_path = f'{self.TRACKING_BUCKET}/{file_name}'
         
         try:
-            # Read existing data
             if self.fs.exists(file_path):
                 with self.fs.open(file_path, 'r') as f:
                     data = json.load(f)
             else:
                 data = []
             
-            # Append new entry
             data.append(entry)
             
-            # Write back to file
             with self.fs.open(file_path, 'w') as f:
                 json.dump(data, f, indent=2)
                 
-            logger.info(f"Added entry to {file_name}")
             return True
         except Exception as e:
             logger.error(f"Error appending to tracking file {file_name}: {e}")

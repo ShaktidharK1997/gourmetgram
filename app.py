@@ -24,6 +24,10 @@ storage_manager = StorageManager()
 # Store temporary image data
 temp_predictions = {}
 
+classes = ["Bread", "Dairy product", "Dessert", "Egg", "Fried food",
+            "Meat", "Noodles/Pasta", "Rice", "Seafood", "Soup",
+            "Vegetable/Fruit"]
+
 # Load model and model info
 try:
     model = torch.load("/app/food11.pth", map_location=torch.device('cpu'))
@@ -48,10 +52,6 @@ def model_predict(img_data, model):
     # Handle image data directly instead of a path
     img = Image.open(BytesIO(img_data)).convert('RGB')
     img = preprocess_image(img)
-    
-    classes = np.array(["Bread", "Dairy product", "Dessert", "Egg", "Fried food",
-        "Meat", "Noodles/Pasta", "Rice", "Seafood", "Soup",
-        "Vegetable/Fruit"])
 
     with torch.no_grad():
         output = model(img)
@@ -122,14 +122,7 @@ def upload():
                 "status": "served"
             }
             
-            # Append data to production_data.json
             storage_manager.append_to_tracking_file("production_data.json", production_data)
-            logger.info(f"Stored production data for prediction {prediction_id}")
-            
-            # Create dropdown options for all classes
-            classes = ["Bread", "Dairy product", "Dessert", "Egg", "Fried food",
-                "Meat", "Noodles/Pasta", "Rice", "Seafood", "Soup",
-                "Vegetable/Fruit"]
             
             class_options = ''
             for i, class_name in enumerate(classes):
@@ -175,21 +168,13 @@ def submit_feedback():
         if prediction_id not in temp_predictions:
             return jsonify({'status': 'error', 'message': 'Prediction ID not found'}), 404
         
-        # Get prediction data
-        prediction = temp_predictions[prediction_id]
-        
         response = {
             'status': 'success',
             'message': 'Thank you for your feedback!'
         }
         
-        # Only additional action needed is cleanup
         if feedback == 'yes':
-            # No need to move the file, it's already in the correct directory
-            logger.info(f"User confirmed correct classification for {prediction_id}")
-        
-        # Cleanup
-        del temp_predictions[prediction_id]
+            del temp_predictions[prediction_id]
         
         return jsonify(response)
     
@@ -205,22 +190,14 @@ def submit_correction():
         corrected_class_idx = int(data.get('corrected_class_idx'))
         
         if prediction_id not in temp_predictions:
-            return jsonify({'status': 'error', 'message': 'Prediction ID not found'}), 404
+            return jsonify({'status': 'error', 'message': "Something went wrong, We can't find this prediction. Please try again later."}), 404
         
-        # Get prediction data
         prediction = temp_predictions[prediction_id]
         original_path = prediction['filename']
         original_class_idx = prediction['predicted_class_idx']
         
-        # Get class names
-        classes = ["Bread", "Dairy product", "Dessert", "Egg", "Fried food",
-            "Meat", "Noodles/Pasta", "Rice", "Seafood", "Soup",
-            "Vegetable/Fruit"]
-        
-        # Move the file to the corrected class directory
         new_path = storage_manager.move_image(original_path, corrected_class_idx)
         
-        # Get updated public URL
         public_url = storage_manager.get_public_url(new_path)
         
         # Create a correction record
@@ -233,10 +210,8 @@ def submit_correction():
             "original_prediction_idx": original_class_idx,
             "corrected_class": classes[corrected_class_idx],
             "corrected_class_idx": corrected_class_idx,
-            "original_confidence": prediction['confidence'],
             "model_version": model_info["model_info"]["version"],
-            "timestamp": datetime.datetime.now().isoformat(),
-            "status": "corrected"
+            "timestamp": datetime.datetime.now().isoformat()
         }
         
         # Save correction data to user_corrected_labels.json
@@ -274,22 +249,67 @@ def test():
 def generate_test_suite():
     """Generate a test suite from user corrections"""
     try:
-        # Get all corrections
         corrections = storage_manager.read_tracking_file("user_corrected_labels.json")
         
-        test_suite = []
-        for correction in corrections:
-            test_suite.append({
-                "image_path": correction["image_path"],
-                "image_url": correction["image_url"],
-                "correct_class": correction["corrected_class"],
-                "correct_class_idx": correction["corrected_class_idx"]
+        # Create timestamp for the test suite directory
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        test_suite_dir = f"test-suites/user_corrected/{timestamp}"
+        
+        # Make sure directory exists
+        if not storage_manager.fs.exists(test_suite_dir):
+            storage_manager.fs.mkdir(test_suite_dir, create_parents=True)
+        
+        if not corrections:
+            return jsonify({
+                "status": "warning",
+                "message": "No corrections found to create test suite",
+                "test_suite_dir": test_suite_dir,
+                "test_suite_size": 0
             })
+        
+        # Copy images to the test suite directory
+        copied_count = 0
+        test_suite = []
+        correction_details = []  # Track details for metadata
+        
+        for correction in corrections:
+            try:
+                source_path = correction["image_path"]
+                filename = source_path.split('/')[-1]
+                target_path = f"{test_suite_dir}/{filename}"
+                
+                # Copy the file to test suite directory
+                storage_manager.fs.copy(source_path, target_path)
+                copied_count += 1
+                
+                # Add details for metadata
+                correction_details.append({
+                    "filename": filename,
+                    "original_prediction": correction["original_prediction"],
+                    "original_prediction_idx": correction["original_prediction_idx"],
+                    "corrected_class": correction["corrected_class"],
+                    "corrected_class_idx": correction["corrected_class_idx"]
+                })
+                
+            except Exception as e:
+                logger.error(f"Error copying {source_path}: {e}")
+                
+        metadata = {
+            "source_type": 'user_corrected',
+            "created_at": datetime.datetime.now().isoformat(),
+            "image_count": copied_count,
+            "source_tracking_file": "user_corrected_labels.json",
+            "model_version": model_info["model_info"]["version"],
+            "correction_details": correction_details 
+        }
+        
+        metadata_path = f"{test_suite_dir}/metadata.json"
+        with storage_manager.fs.open(metadata_path, 'w') as f:
+            json.dump(metadata, f, indent=2)
         
         return jsonify({
             "status": "success",
-            "test_suite_size": len(test_suite),
-            "test_suite": test_suite
+            "message": f"Created test suite with {copied_count} images"
         })
         
     except Exception as e:
@@ -298,6 +318,7 @@ def generate_test_suite():
             "status": "error",
             "message": f"Failed to generate test suite: {str(e)}"
         }), 500
+
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8000, debug=False)
