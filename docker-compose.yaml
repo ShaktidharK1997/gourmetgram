@@ -25,13 +25,3 @@ services:
     depends_on:
       - minio
       - label-studio
-      
-  scheduler:
-    build:
-      context: ./scheduler
-      dockerfile: Dockerfile
-    env_file: ".env"
-    depends_on:
-      - minio
-      - label-studio
-      - flask-app

@@ -9,10 +9,12 @@ import uuid
 import json
 from io import BytesIO
 
-# Import our custom modules
 from storage import StorageManager
 from label_studio_integration import LabelStudioClient
 from utils import setup_logging, generate_unique_filename
+from test_suite_manager import TestSuiteManager
+from label_processor import LabelProcessor
+from random_sampler import RandomSampler
 
 # Set up logging
 logger = setup_logging()
@@ -22,8 +24,15 @@ app = Flask(__name__)
 # Initialize storage manager
 storage_manager = StorageManager()
 
+test_suite_manager = TestSuiteManager(storage_manager, logger)
+
+label_processor = LabelProcessor(storage_manager, logger)
+
 # Initialize Label Studio client
 label_studio_client = LabelStudioClient()
+
+# Initialize random sampler after storage_manager and label_studio_client
+random_sampler = RandomSampler(storage_manager, label_studio_client, logger)
 
 # Store temporary image data
 temp_predictions = {}
@@ -99,12 +108,48 @@ def upload():
             # Generate a prediction ID
             prediction_id = str(uuid.uuid4())
             
+            # Check if confidence is low
+            is_low_confidence = False
+            task_id = None
+            
+            if model_info and confidence < model_info['thresholds']['confidence_threshold']:
+                is_low_confidence = True
+                
+                # Automatically create a Label Studio task for low confidence predictions
+                task = label_studio_client.create_task(
+                    public_url,
+                    predicted_class,
+                    confidence,
+                    "low_confidence"
+                )
+                
+                if task:
+                    task_id = task.id
+                    logger.info(f"Created Label Studio task with ID: {task_id} for low confidence prediction")
+                    
+                    # Create tracking entry
+                    tracking_entry = {
+                        "image_path": s3_path,
+                        "original_prediction": predicted_class,
+                        "confidence": confidence,
+                        "timestamp": datetime.datetime.now().isoformat(),
+                        "model_version": model_info["model_info"]["version"] if model_info else "unknown",
+                        "task_id": task_id,
+                        "status": "pending",
+                        "user_feedback": "not_available"
+                    }
+                    
+                    # Save to tracking file
+                    storage_manager.append_to_tracking_file("low_confidence_tasks.json", tracking_entry)
+            
             # Store the prediction temporarily
             temp_predictions[prediction_id] = {
                 'image_url': public_url,
                 'predicted_class': predicted_class,
                 'confidence': confidence,
-                'filename': s3_path
+                'filename': s3_path,
+                'is_low_confidence': is_low_confidence,
+                'task_id': task_id  # Will be None if no task was created
             }
             
             # Store production data in tracking file
@@ -117,22 +162,29 @@ def upload():
                 "confidence": float(confidence),
                 "timestamp": datetime.datetime.now().isoformat(),
                 "model_version": model_info["model_info"]["version"] if model_info else "unknown",
-                "status": "served"
+                "status": "served",
+                "is_low_confidence": is_low_confidence,
+                "label_studio_task_id": task_id
             }
             
             # Append data to production_data.json
             storage_manager.append_to_tracking_file("production_data.json", production_data)
-            logger.info(f"Stored production data for prediction {prediction_id}")
             
             # Return prediction to user with feedback buttons
             result_html = f'''
             <div class="prediction-result">
                 <h4>Prediction Result:</h4>
-                <p><button type="button" class="btn btn-info">{predicted_class}</button></p>
-                <p>Is this classification correct?</p>
-                <div class="feedback-buttons">
-                    <button type="button" class="btn btn-success feedback-btn" data-feedback="yes" data-prediction-id="{prediction_id}">Yes, it's correct</button>
-                    <button type="button" class="btn btn-danger feedback-btn" data-feedback="no" data-prediction-id="{prediction_id}">No, it's incorrect</button>
+                <p><span class="badge bg-info">{predicted_class}</span></p>
+                <div class="d-flex justify-content-center align-items-center mt-2">
+                    <small class="text-muted me-2">Was this correct?</small>
+                    <button type="button" class="btn btn-link p-1 feedback-btn" data-feedback="yes" data-prediction-id="{prediction_id}" 
+                            title="Correct prediction">
+                        <i class="bi bi-hand-thumbs-up"></i>
+                    </button>
+                    <button type="button" class="btn btn-link p-1 feedback-btn" data-feedback="no" data-prediction-id="{prediction_id}"
+                            title="Incorrect prediction">
+                        <i class="bi bi-hand-thumbs-down"></i>
+                    </button>
                 </div>
             </div>
             '''
@@ -162,55 +214,53 @@ def submit_feedback():
         confidence = prediction['confidence']
         filename = prediction['filename']
         
-        # Determine if we should create a Label Studio task
-        should_create_task = False
-        tracking_file = None
+        # Check if a task already exists for this prediction
+        existing_task_id = prediction.get('task_id')
         
-        if feedback == 'no':  # User disagrees with the classification
-            should_create_task = True
-            tracking_file = 'user_feedback_tasks.json'
-            logger.info("Creating task because user disagreed with classification")
-        elif confidence < model_info['thresholds']['confidence_threshold']:  # Low confidence prediction
-            should_create_task = True
-            tracking_file = 'low_confidence_tasks.json'
-            logger.info(f"Creating task because of low confidence ({confidence:.2f})")
-        
-        # Create a task in Label Studio if needed
+        # If feedback is "no" and no task exists yet, create one
         task = None
-        if should_create_task:
+        task_created = False
+        
+        if feedback == 'no' and not existing_task_id:
+            # Create a task in Label Studio
             task = label_studio_client.create_task(
                 image_url,
                 predicted_class,
                 confidence,
-                feedback
+                "user_feedback"
             )
             
             if task:
-                logger.info(f"Created Label Studio task with ID: {task.id}")
+                task_created = True
+                logger.info(f"Created Label Studio task with ID: {task.id} based on user feedback")
                 
-                if tracking_file:
-                    tracking_entry = {
-                        "image_path": filename,
-                        "original_prediction": predicted_class,
-                        "confidence": confidence,
-                        "timestamp": datetime.datetime.now().isoformat(),
-                        "model_version": model_info["model_info"]["version"],  
-                        "task_id": task.id,
-                        "status": "pending",
-                        "user_feedback": feedback
-                    }
-                    storage_manager.append_to_tracking_file(tracking_file, tracking_entry)
-            else:
-                logger.warning("Failed to create Label Studio task")
-
+                # Create tracking entry
+                tracking_entry = {
+                    "image_path": filename,
+                    "original_prediction": predicted_class,
+                    "confidence": confidence,
+                    "timestamp": datetime.datetime.now().isoformat(),
+                    "model_version": model_info["model_info"]["version"] if model_info else "unknown",
+                    "task_id": task.id,
+                    "status": "pending",
+                    "user_feedback": feedback
+                }
+                
+                storage_manager.append_to_tracking_file("user_feedback_tasks.json", tracking_entry)
+        
+        
         # Cleanup
         del temp_predictions[prediction_id]
 
+        # Prepare response
+        task_id = task.id if task else existing_task_id
+        
         response = {
             'status': 'success',
             'message': 'Thank you for your feedback!',
-            'task_created': should_create_task,
-            'task_id': task.id if task else None
+            'task_created': task_created,
+            'task_exists': existing_task_id is not None,
+            'task_id': task_id
         }
         
         return jsonify(response)
@@ -219,17 +269,94 @@ def submit_feedback():
         logger.error(f"Error processing feedback: {e}")
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
+@app.route('/generate_test_suite', methods=['GET'])
+def generate_test_suite():
+    """Generate a test suite from tracking data"""
+    try:
+        task_type = request.args.get('task_type')
+        
+        valid_types = ['user_feedback', 'low_confidence', 'random_sampling', 'all']
+        if task_type not in valid_types:
+            return jsonify({
+                "status": "error",
+                "message": f"Invalid task type. Must be one of: {', '.join(valid_types)}"
+            }), 400
+
+        if task_type == 'all':
+            results = test_suite_manager.create_all_test_suites()
+            return jsonify({
+                "status": "success",
+                "message": f"Created test suites for all task types",
+                "results": results
+            })
+        else:
+            test_suite_dir = test_suite_manager.create_test_suite(task_type)
+            return jsonify({
+                "status": "success",
+                "message": f"Created test suite for {task_type}",
+                "test_suite_dir": test_suite_dir
+            })
+        
+    except Exception as e:
+        logger.error(f"Error generating test suite: {e}")
+        return jsonify({
+            "status": "error",
+            "message": f"Failed to generate test suite: {str(e)}"
+        }), 500
+
+@app.route('/process_labels', methods=['POST'])
+def process_labels():
+    """Process Label Studio annotation results and organize images"""
+    try:
+        result = label_processor.process_label_studio_results()
+        return jsonify(result)
+    except Exception as e:
+        logger.error(f"Error processing labels: {e}")
+        return jsonify({
+            "status": "error",
+            "message": f"Failed to process labels: {str(e)}"
+        }), 500
+
+@app.route('/sample_random_images', methods=['POST'])
+def sample_random_images():
+    """Sample random images and create Label Studio tasks"""
+    try:
+
+        sample_count = 5
+        if request.is_json:
+            sample_count = request.json.get('sample_count', 5)
+        
+        successful_tasks, errors = random_sampler.sample_random_images(sample_count)
+
+        response = {
+            "status": "success" if successful_tasks else "error" if errors else "warning",
+            "message": f"Created {len(successful_tasks)} random sampling tasks" if successful_tasks else "No tasks created",
+            "tasks_created": len(successful_tasks),
+            "requested_count": sample_count,
+            "task_ids": [task.get("task_id") for task in successful_tasks if task.get("task_id")],
+            "errors": errors
+        }
+        
+        status_code = 200
+        if not successful_tasks and errors:
+            status_code = 500
+        
+        return jsonify(response), status_code
+        
+    except Exception as e:
+        logger.error(f"Error in random sampling endpoint: {e}")
+        return jsonify({
+            "status": "error",
+            "message": f"Failed to sample images: {str(e)}",
+            "errors": [str(e)]
+        }), 500
+
 @app.route('/test', methods=['GET'])
 def test():
-    try:
-        # Read a test image from a fixed location
-        with open("/app/test_image.jpeg", "rb") as f:
-            test_image_data = f.read()
-        preds, probs, _ = model_predict(test_image_data, model)
-        return str(preds)
-    except Exception as e:
-        logger.error(f"Error in test route: {e}")
-        return f"Error: {str(e)}"
+    with open("/app/test_image.jpeg", "rb") as f:
+        test_image_data = f.read()
+    preds, probs, _ = model_predict(test_image_data, model)
+    return str(preds)
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8000, debug=False)
