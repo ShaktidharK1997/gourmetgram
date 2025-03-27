@@ -1,9 +1,0 @@
-# Run every 30 minutes
-*/30 * * * * /usr/local/bin/python /app/process_labels.py >> /var/log/cron.log 2>&1
-
-*/30 * * * * /usr/local/bin/python /app/random_sampler.py >> /var/log/cron.log 2>&1
-
-# Run test suite generator once daily at midnight
-0 0 * * * /usr/local/bin/python /app/test_suite_generator.py all >> /var/log/cron.log 2>&1
-
-# Empty line at the end of the file is required

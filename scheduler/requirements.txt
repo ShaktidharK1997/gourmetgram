@@ -1,7 +1,0 @@
-s3fs
-python-json-logger
-numpy
-s3fs
-label_studio_sdk
-requests
-dotenv
